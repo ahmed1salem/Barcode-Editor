@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مولد الباركود (HTML/JS)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #007bff; --secondary-color: #f8f9fa; --dark-color: #343a40;
+            --light-color: #ffffff; --font-family: 'Cairo', sans-serif;
+        }
+        body {
+            font-family: var(--font-family); background-color: var(--secondary-color); color: var(--dark-color);
+            margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;
+        }
+        .container {
+            background-color: var(--light-color); padding: 40px; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); width: 100%; max-width: 700px; text-align: center;
+        }
+        header h1 { color: var(--dark-color); margin-bottom: 10px; }
+        header p { color: #6c757d; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; text-align: right; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: bold; }
+        .form-group-inline { display: flex; gap: 20px; justify-content: space-between; }
+        .form-group-inline .form-group { flex: 1; }
+        textarea, input[type="file"], input[type="number"] {
+            width: 100%; padding: 12px; border: 1px solid #ced4da; border-radius: 8px;
+            font-family: var(--font-family); box-sizing: border-box; transition: border-color 0.3s;
+        }
+        button {
+            width: 100%; padding: 15px; background-color: var(--primary-color); color: var(--light-color);
+            border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer;
+            transition: background-color 0.3s; display: flex; justify-content: center; align-items: center;
+        }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        #status { margin-top: 20px; font-weight: bold; color: var(--primary-color); min-height: 25px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>مولد الباركود بلغة JavaScript</h1>
+            <p>كل عمليات المعالجة تتم في متصفحك. قد تستغرق العملية بعض الوقت، الرجاء عدم إغلاق الصفحة.</p>
+        </header>
+
+        <form id="generator-form">
+            <div class="form-group">
+                <label for="codes">1. الصق الأكواد هنا (كل كود في سطر)</label>
+                <textarea id="codes" name="codes" rows="10" placeholder="12345&#x0a;67890&#x0a;54321&#x0a;..." required></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="template">2. ارفع صورة التصميم (الخلفية)</label>
+                <input type="file" id="template" name="template" accept="image/jpeg, image/png" required>
+            </div>
+
+            <div class="form-group-inline">
+                 <div class="form-group">
+                    <label for="font_size">حجم الخط</label>
+                    <input type="number" id="font_size" name="font_size" value="36" required>
+                </div>
+                 <div class="form-group">
+                    <label for="barcode_width">عرض الباركود</label>
+                    <input type="number" id="barcode_width" name="barcode_width" value="2" required>
+                </div>
+            </div>
+
+            <button type="submit" id="submit-btn">🚀 ابدأ التوليد</button>
+        </form>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        document.getElementById('generator-form').addEventListener('submit', async function(event) {
+            event.preventDefault(); // منع إرسال النموذج التقليدي
+
+            const submitBtn = document.getElementById('submit-btn');
+            const statusDiv = document.getElementById('status');
+            
+            submitBtn.disabled = true;
+            submitBtn.innerText = 'جاري المعالجة...';
+            statusDiv.innerText = 'بدء التحضير...';
+
+            try {
+                // --- 1. جمع البيانات من النموذج ---
+                const codesText = document.getElementById('codes').value;
+                const templateFile = document.getElementById('template').files[0];
+                const fontSize = parseInt(document.getElementById('font_size').value);
+                const barcodeWidth = parseInt(document.getElementById('barcode_width').value);
+                
+                const codes = codesText.split('\n').filter(c => c.trim() !== '');
+                if (!codes.length || !templateFile) {
+                    throw new Error('الرجاء التأكد من إدخال الأكواد ورفع صورة التصميم.');
+                }
+                
+                // --- 2. إحداثيات وضع الباركود (يمكنك تعديلها) ---
+                const POSITIONS = [
+                    { x: 110, y: 415 }, { x: 850, y: 415 },
+                    { x: 110, y: 950 }, { x: 850, y: 950 },
+                    { x: 110, y: 1485 }, { x: 850, y: 1485 },
+                    { x: 110, y: 2020 }, { x: 850, y: 2020 },
+                ];
+                
+                // --- 3. قراءة صورة التصميم وتحويلها ---
+                const templateImage = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        const img = new Image();
+                        img.onload = () => resolve(img);
+                        img.onerror = reject;
+                        img.src = e.target.result;
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(templateFile);
+                });
+
+                // --- 4. إعداد ملف الـ ZIP ---
+                const zip = new JSZip();
+                const totalPages = Math.ceil(codes.length / 8);
+
+                // --- 5. حلقة المعالجة الرئيسية ---
+                for (let i = 0; i < codes.length; i += 8) {
+                    const pageIndex = (i / 8) + 1;
+                    statusDiv.innerText = `جاري إنشاء الصفحة ${pageIndex} من ${totalPages}...`;
+                    
+                    // استخدام setTimeout للسماح للمتصفح بالتنفس وتحديث الواجهة
+                    await new Promise(resolve => setTimeout(resolve, 20));
+
+                    const batch = codes.slice(i, i + 8);
+                    
+                    // إنشاء لوحة قماشية (canvas) لكل صفحة
+                    const pageCanvas = document.createElement('canvas');
+                    pageCanvas.width = templateImage.width;
+                    pageCanvas.height = templateImage.height;
+                    const pageCtx = pageCanvas.getContext('2d');
+                    
+                    // رسم التصميم كخلفية
+                    pageCtx.drawImage(templateImage, 0, 0);
+
+                    // --- 6. حلقة داخلية لإنشاء ولصق البطاقات ---
+                    for (let j = 0; j < batch.length; j++) {
+                        const code = batch[j];
+                        const position = POSITIONS[j];
+                        
+                        // إنشاء بطاقة الباركود
+                        const cardCanvas = document.createElement('canvas');
+                        const cardCtx = cardCanvas.getContext('2d');
+                        
+                        // رسم الباركود أولاً لتحديد الأبعاد
+                        JsBarcode(cardCanvas, code, {
+                            format: 'CODE128',
+                            width: barcodeWidth,
+                            height: 80, // ارتفاع مبدئي للباركود
+                            displayValue: false, // لن نعرض النص من المكتبة، سنرسمه بأنفسنا
+                        });
+                        
+                        // إعداد الخط - سيستخدم Arial إذا كان متاحاً في نظام المستخدم
+                        cardCtx.font = `bold ${fontSize}px Arial, sans-serif`;
+                        cardCtx.fillStyle = 'black';
+                        cardCtx.textAlign = 'center';
+                        
+                        // الحصول على أبعاد النص
+                        const textMetrics = cardCtx.measureText(code);
+                        const textHeight = textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent;
+                        
+                        // تعديل ارتفاع اللوحة ليشمل النص
+                        const finalCardHeight = cardCanvas.height + textHeight + 15;
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = cardCanvas.width;
+                        tempCanvas.height = finalCardHeight;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        
+                        // لصق الباركود ورسم النص في اللوحة المؤقتة
+                        tempCtx.drawImage(cardCanvas, 0, 0);
+                        tempCtx.font = `bold ${fontSize}px Arial, sans-serif`;
+                        tempCtx.fillStyle = 'black';
+                        tempCtx.textAlign = 'center';
+                        tempCtx.fillText(code, cardCanvas.width / 2, cardCanvas.height + fontSize);
+
+                        // لصق البطاقة النهائية على لوحة الصفحة الرئيسية
+                        pageCtx.drawImage(tempCanvas, position.x, position.y);
+                    }
+                    
+                    // --- 7. إضافة الصفحة المكتملة إلى ملف الـ ZIP ---
+                    const pageBlob = await new Promise(resolve => pageCanvas.toBlob(resolve, 'image/png'));
+                    zip.file(`Page_${pageIndex}.png`, pageBlob);
+                }
+
+                // --- 8. إنشاء وتنزيل ملف الـ ZIP ---
+                statusDiv.innerText = 'جاري ضغط الملفات...';
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                saveAs(zipBlob, `barcodes_${new Date().toISOString().slice(0,10)}.zip`);
+
+                statusDiv.innerText = 'تمت العملية بنجاح!';
+
+            } catch (error) {
+                statusDiv.innerText = `حدث خطأ: ${error.message}`;
+                console.error(error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerText = '🚀 ابدأ التوليد';
+            }
+        });
+    </script>
+</body>
+</html>
